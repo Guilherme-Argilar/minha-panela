@@ -1,103 +1,103 @@
-import Image from "next/image";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client"
 
-export default function Home() {
+import { useState, useEffect } from "react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { Progress } from "@/components/ui/progress"
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts"
+
+export default function PanelaDashboard() {
+  const [temperature, setTemperature] = useState(25)
+  const [setpoint, setSetpoint] = useState(115)
+  const [rpm, setRpm] = useState(40)
+  const [torque, setTorque] = useState(10)
+  const [phase, setPhase] = useState("Clarificação")
+  const [brix, setBrix] = useState(20)
+  const [time, setTime] = useState(0)
+  const [history, setHistory] = useState<any[]>([])
+
+  // Simulação dos dados
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTemperature((t) => Math.min(setpoint + 10, t + Math.random() * 2))
+      setTorque((tor) => Math.min(100, tor + Math.random() * 2))
+      setBrix((b) => Math.min(85, b + Math.random() * 1.5))
+      setHistory((h) => [
+        ...h,
+        { time: new Date().toLocaleTimeString(), temp: temperature, torque, brix },
+      ].slice(-20))
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [setpoint, temperature, torque])
+
+  // Cronômetro de processo
+  useEffect(() => {
+    const timer = setInterval(() => setTime((t) => t + 1), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const phases = ["Clarificação", "Concentração", "Ponto"]
+  const currentPhaseIndex = phases.indexOf(phase)
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+      <Card className="shadow-xl">
+        <CardContent>
+          <h2 className="text-xl font-bold mb-2">Status da Panela</h2>
+          <p>Temperatura atual: <b>{temperature.toFixed(1)} °C</b></p>
+          <p>Setpoint: <b>{setpoint} °C</b></p>
+          <p>Velocidade da pá: <b>{rpm} rpm</b></p>
+          <p>Torque do motor: <b>{torque.toFixed(1)} %</b></p>
+          <p>Concentração de Açúcar: <b>{brix.toFixed(1)} °Brix</b></p>
+          <p>Fase do processo: <b>{phase}</b></p>
+          <p>Tempo de processo: <b>{Math.floor(time/60)} min {time%60}s</b></p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {temperature > setpoint && (
+            <p className="text-red-600">⚠️ Temperatura acima do limite!</p>
+          )}
+          {torque > 90 && (
+            <p className="text-orange-600">⚠️ Sobrecarga no motor!</p>
+          )}
+
+          <div className="mt-4 flex gap-2">
+            <Button onClick={() => setPhase("Concentração")}>Iniciar Receita</Button>
+            <Button variant="destructive" onClick={() => setPhase("Finalizado")}>Parar</Button>
+          </div>
+
+          <div className="mt-4">
+            <Progress value={((currentPhaseIndex + 1) / phases.length) * 100} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-xl">
+        <CardContent>
+          <h2 className="text-xl font-bold mb-2">Controles</h2>
+          <p>Setpoint de Temperatura</p>
+          <Slider min={80} max={130} value={[setpoint]} onValueChange={(v) => setSetpoint(v[0])} />
+          <p className="mt-4">Velocidade da Pá</p>
+          <Slider min={10} max={100} value={[rpm]} onValueChange={(v) => setRpm(v[0])} />
+          <p className="mt-4">Torque Atual</p>
+          <Progress value={torque} />
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-2 shadow-xl">
+        <CardContent>
+          <h2 className="text-xl font-bold mb-2">Histórico</h2>
+          <LineChart width={600} height={250} data={history}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" hide />
+            <YAxis />
+            <Tooltip />
+            <Line type="monotone" dataKey="temp" stroke="#8884d8" name="Temperatura (°C)" />
+            <Line type="monotone" dataKey="torque" stroke="#82ca9d" name="Torque (%)" />
+            <Line type="monotone" dataKey="brix" stroke="#ff7300" name="Brix (°)" />
+          </LineChart>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }
