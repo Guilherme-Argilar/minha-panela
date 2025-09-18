@@ -40,10 +40,10 @@ import {
 // ---------------- Configurações & Constantes ----------------
 const AMBIENT = 25
 const MAX_BRIX = 85
-// Constantes ajustadas para processo de ~60 segundos total
-const HEAT_K = 0.25  // Aquecimento mais rápido
-const COOL_K = 0.03  // Resfriamento mais rápido
-const BRIX_K = 0.045 // Concentração mais rápida
+// Constantes ajustadas para meio termo ideal
+const HEAT_K = 0.37  // Aquecimento no meio termo (era 0.35)
+const COOL_K = 0.05  // Resfriamento rápido
+const BRIX_K = 0.08  // Concentração rápida
 
 const PHASE_CONFIG = {
   Clarificação: { 
@@ -89,8 +89,8 @@ const RadialIndicator = ({ value, max, label, color, icon: Icon }: any) => {
   const data = [{ value, fill: color }]
 
   return (
-    <div className="relative">
-      <ResponsiveContainer width={120} height={120}>
+    <div className="relative flex items-center justify-center">
+      <ResponsiveContainer width={100} height={100}>
         <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={data}>
           <PolarAngleAxis type="number" domain={[0, max]} tick={false} />
           <RadialBar dataKey="value" cornerRadius={10} fill={color} />
@@ -98,7 +98,7 @@ const RadialIndicator = ({ value, max, label, color, icon: Icon }: any) => {
       </ResponsiveContainer>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <Icon className="w-4 h-4 opacity-60" />
-        <span className="text-xl font-bold">{value.toFixed(0)}</span>
+        <span className="text-lg font-bold">{value.toFixed(0)}</span>
         <span className="text-xs opacity-60">{label}</span>
       </div>
     </div>
@@ -121,12 +121,14 @@ export default function ImprovedPanelaDashboard() {
   const [alarms, setAlarms] = useState<AlarmType[]>([])
   const [efficiency, setEfficiency] = useState(100)
   const [showChart, setShowChart] = useState(true)
+  const [protectionActive, setProtectionActive] = useState(false)
+  const [originalRpm, setOriginalRpm] = useState(40)
 
   // Refs para laço estável
-  const ref = useRef({ temperature, setpoint, rpm, torque, phase, brix, auto, running })
+  const ref = useRef({ temperature, setpoint, rpm, torque, phase, brix, auto, running, protectionActive, originalRpm })
   useEffect(() => {
-    ref.current = { temperature, setpoint, rpm, torque, phase, brix, auto, running }
-  }, [temperature, setpoint, rpm, torque, phase, brix, auto, running])
+    ref.current = { temperature, setpoint, rpm, torque, phase, brix, auto, running, protectionActive, originalRpm }
+  }, [temperature, setpoint, rpm, torque, phase, brix, auto, running, protectionActive, originalRpm])
 
   // Sistema de alarmes
   const addAlarm = useCallback((message: string, severity: "warning" | "error" | "info" = "warning") => {
@@ -150,9 +152,9 @@ export default function ImprovedPanelaDashboard() {
       const cooled = toward - COOL_K * (temperature - AMBIENT)
       const nextTemp = Math.min(setpoint + 10, Math.max(AMBIENT, cooled))
 
-      // Física do Brix (mais rápida)
+      // Física do Brix (meio termo equilibrado)
       const evapFactor = Math.max(0, Math.min(2, (nextTemp - 80) / 50))
-      const phaseFactor = phase === "Concentração" ? 1.2 : phase === "Ponto" ? 1.5 : 0.8
+      const phaseFactor = phase === "Concentração" ? 1.8 : phase === "Ponto" ? 2.2 : 1.0
       const nextBrix = Math.min(MAX_BRIX, brix + BRIX_K * evapFactor * phaseFactor)
 
       // Física do torque
@@ -172,15 +174,16 @@ export default function ImprovedPanelaDashboard() {
       let nextSetpoint = setpoint
       
       if (auto) {
-        if (phase === "Clarificação" && (nextTemp >= 90 || nextBrix >= 30)) {
+        // Meio termo: nem muito rápido, nem muito lento
+        if (phase === "Clarificação" && (nextTemp >= 85 || nextBrix >= 26)) {
           nextPhase = "Concentração"
           nextSetpoint = PHASE_CONFIG[nextPhase].setpoint
           addAlarm("Iniciando fase de Concentração", "info")
-        } else if (phase === "Concentração" && (nextBrix >= 70 || nextTorque >= 80)) {
+        } else if (phase === "Concentração" && (nextBrix >= 55 || nextTorque >= 70)) {
           nextPhase = "Ponto"
           nextSetpoint = PHASE_CONFIG[nextPhase].setpoint
           addAlarm("Atingindo ponto ideal", "info")
-        } else if (phase === "Ponto" && nextBrix >= 82) {
+        } else if (phase === "Ponto" && nextBrix >= 75) {
           nextPhase = "Finalizado"
           nextSetpoint = PHASE_CONFIG[nextPhase].setpoint
           addAlarm("Processo finalizado com sucesso!", "info")
@@ -191,7 +194,7 @@ export default function ImprovedPanelaDashboard() {
       if (nextTemp > setpoint + 5 && temperature <= setpoint + 5) {
         addAlarm(`Temperatura excedendo limite: ${nextTemp.toFixed(1)}°C`, "warning")
       }
-      if (nextTorque >= 90 && torque < 90) {
+      if (nextTorque >= 85 && torque < 85) {
         addAlarm("⚠️ Sobrecarga detectada no motor!", "error")
       }
       if (nextTorque >= 95) {
@@ -218,10 +221,10 @@ export default function ImprovedPanelaDashboard() {
           brix: +nextBrix.toFixed(1),
           setpoint: nextSetpoint
         }
-        // Mantém mais pontos no histórico (120 pontos = 2 minutos)
-        return [...h.slice(-119), newPoint]
+        // Histórico ajustado para processo de ~40s (100 pontos = ~50 segundos)
+        return [...h.slice(-99), newPoint]
       })
-    }, 500) // Atualização mais frequente para suavizar o gráfico
+    }, 300) // Atualização mais frequente para transições rápidas (era 500ms)
 
     return () => clearInterval(interval)
   }, [addAlarm])
@@ -260,6 +263,8 @@ export default function ImprovedPanelaDashboard() {
     setHistory([])
     setAlarms([])
     setEfficiency(100)
+    setProtectionActive(false)
+    setOriginalRpm(40)
   }
 
   const formatTime = (seconds: number) => {
@@ -356,7 +361,7 @@ export default function ImprovedPanelaDashboard() {
                     className="mt-2"
                   />
                 </div>
-                <Gauge className={`w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 ${torque >= 90 ? 'text-red-500' : torque >= 70 ? 'text-orange-500' : 'text-green-500'} ml-2`} />
+                <Gauge className={`w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 ${torque >= 85 ? 'text-red-500' : torque >= 70 ? 'text-orange-500' : 'text-green-500'} ml-2`} />
               </div>
             </CardContent>
           </Card>
@@ -529,16 +534,34 @@ export default function ImprovedPanelaDashboard() {
 
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <label className="text-xs sm:text-sm font-medium">Velocidade da Pá (RPM)</label>
-                      <span className="text-xs sm:text-sm font-bold">{rpm} rpm</span>
+                      <label className="text-xs sm:text-sm font-medium">
+                        Velocidade da Pá (RPM)
+                        {protectionActive && <span className="text-orange-500 ml-1">🛡️</span>}
+                      </label>
+                      <span className="text-xs sm:text-sm font-bold">
+                        {rpm} rpm
+                        {protectionActive && <span className="text-orange-500 text-xs ml-1">(Reduzido)</span>}
+                      </span>
                     </div>
                     <Slider 
                       min={10} 
                       max={100} 
                       step={5} 
                       value={[rpm]} 
-                      onValueChange={(v) => setRpm(v[0])}
+                      onValueChange={(v) => {
+                        if (!protectionActive) {
+                          setRpm(v[0])
+                          setOriginalRpm(v[0]) // Salva como RPM original para futuras proteções
+                        }
+                      }}
+                      disabled={protectionActive}
+                      className={protectionActive ? "opacity-60" : ""}
                     />
+                    {protectionActive && (
+                      <p className="text-xs text-orange-600">
+                        RPM reduzido automaticamente pela proteção contra sobrecarga
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg">
@@ -591,35 +614,43 @@ export default function ImprovedPanelaDashboard() {
                 <CardTitle className="text-base sm:text-lg">Indicadores Rápidos</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 justify-items-center">
-                  <RadialIndicator 
-                    value={temperature}
-                    max={130}
-                    label="°C"
-                    color="#ef4444"
-                    icon={Thermometer}
-                  />
-                  <RadialIndicator 
-                    value={brix}
-                    max={MAX_BRIX}
-                    label="°Brix"
-                    color="#3b82f6"
-                    icon={Droplet}
-                  />
-                  <RadialIndicator 
-                    value={torque}
-                    max={100}
-                    label="%"
-                    color="#10b981"
-                    icon={Gauge}
-                  />
-                  <RadialIndicator 
-                    value={efficiency}
-                    max={100}
-                    label="Efic."
-                    color="#f59e0b"
-                    icon={TrendingUp}
-                  />
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 place-items-center">
+                  <div className="flex flex-col items-center">
+                    <RadialIndicator 
+                      value={temperature}
+                      max={130}
+                      label="°C"
+                      color="#ef4444"
+                      icon={Thermometer}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <RadialIndicator 
+                      value={brix}
+                      max={MAX_BRIX}
+                      label="°Brix"
+                      color="#3b82f6"
+                      icon={Droplet}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <RadialIndicator 
+                      value={torque}
+                      max={100}
+                      label="%"
+                      color="#10b981"
+                      icon={Gauge}
+                    />
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <RadialIndicator 
+                      value={efficiency}
+                      max={100}
+                      label="Efic."
+                      color="#f59e0b"
+                      icon={TrendingUp}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -628,35 +659,35 @@ export default function ImprovedPanelaDashboard() {
           <div className="space-y-3 sm:space-y-4">
             {/* Controles de Ação */}
             <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle>Controles do Sistema</CardTitle>
+              <CardHeader className="pb-3 sm:pb-6">
+                <CardTitle className="text-base sm:text-lg">Controles do Sistema</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2 sm:space-y-3">
                 <Button 
-                  className="w-full" 
+                  className="w-full text-sm sm:text-base" 
                   size="lg"
                   onClick={running ? handlePause : handleStart}
                   variant={running ? "destructive" : "default"}
                 >
                   {running ? (
                     <>
-                      <Pause className="mr-2 h-4 w-4" />
+                      <Pause className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                       Pausar Processo
                     </>
                   ) : (
                     <>
-                      <Play className="mr-2 h-4 w-4" />
+                      <Play className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                       Iniciar Processo
                     </>
                   )}
                 </Button>
                 <Button 
-                  className="w-full" 
+                  className="w-full text-sm sm:text-base" 
                   size="lg"
                   variant="outline"
                   onClick={handleReset}
                 >
-                  <RotateCcw className="mr-2 h-4 w-4" />
+                  <RotateCcw className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                   Reiniciar Sistema
                 </Button>
               </CardContent>
@@ -664,25 +695,25 @@ export default function ImprovedPanelaDashboard() {
 
             {/* Alarmes */}
             <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
+              <CardHeader className="pb-3 sm:pb-6">
+                <CardTitle className="flex items-center justify-between text-base sm:text-lg">
                   <span>Alarmes e Eventos</span>
                   {alarms.length > 0 && (
-                    <Badge variant="destructive">{alarms.length}</Badge>
+                    <Badge variant="destructive" className="text-xs sm:text-sm">{alarms.length}</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-48 sm:max-h-64 overflow-y-auto">
                   {alarms.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">
+                    <p className="text-xs sm:text-sm text-gray-500 text-center py-4">
                       Nenhum alarme ativo
                     </p>
                   ) : (
                     alarms.slice(-5).reverse().map((alarm) => (
                       <div 
                         key={alarm.id} 
-                        className={`p-2 rounded-lg text-sm ${
+                        className={`p-2 rounded-lg text-xs sm:text-sm ${
                           alarm.severity === 'error' ? 'bg-red-50 text-red-700' :
                           alarm.severity === 'warning' ? 'bg-orange-50 text-orange-700' :
                           'bg-blue-50 text-blue-700'
@@ -690,13 +721,13 @@ export default function ImprovedPanelaDashboard() {
                       >
                         <div className="flex items-start gap-2">
                           {alarm.severity === 'error' ? 
-                            <XCircle className="w-4 h-4 mt-0.5" /> :
+                            <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" /> :
                             alarm.severity === 'warning' ?
-                            <AlertTriangle className="w-4 h-4 mt-0.5" /> :
-                            <CheckCircle2 className="w-4 h-4 mt-0.5" />
+                            <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" /> :
+                            <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mt-0.5 flex-shrink-0" />
                           }
-                          <div className="flex-1">
-                            <p className="font-medium">{alarm.message}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium break-words">{alarm.message}</p>
                             <p className="text-xs opacity-70">
                               {alarm.timestamp.toLocaleTimeString()}
                             </p>
@@ -711,33 +742,42 @@ export default function ImprovedPanelaDashboard() {
 
             {/* Informações do Sistema */}
             <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle>Informações do Sistema</CardTitle>
+              <CardHeader className="pb-3 sm:pb-6">
+                <CardTitle className="text-base sm:text-lg">Informações do Sistema</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Modo de Operação</span>
-                  <Badge variant={auto ? "default" : "outline"}>
+                  <Badge variant={auto ? "default" : "outline"} className="text-xs">
                     {auto ? "AUTOMÁTICO" : "MANUAL"}
                   </Badge>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Status do Motor</span>
-                  <span className={`font-bold ${torque >= 90 ? 'text-red-500' : 'text-green-500'}`}>
-                    {torque >= 90 ? 'SOBRECARGA' : 'NORMAL'}
+                  <span className={`font-bold ${torque >= 85 ? 'text-red-500' : 'text-green-500'}`}>
+                    {torque >= 85 ? 'SOBRECARGA' : 'NORMAL'}
                   </span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs sm:text-sm">
+                  <span className="text-gray-500">Sistema de Proteção</span>
+                  <div className="flex items-center gap-1">
+                    <span className={`font-bold ${protectionActive ? 'text-orange-500' : 'text-green-500'}`}>
+                      {protectionActive ? 'ATIVO' : 'NORMAL'}
+                    </span>
+                    {protectionActive && <span className="text-xs">🛡️</span>}
+                  </div>
+                </div>
+                <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Tempo Total</span>
                   <span className="font-bold">{formatTime(time)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Eficiência Geral</span>
                   <span className="font-bold">{efficiency.toFixed(0)}%</span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Processo Estimado</span>
-                  <span className="font-bold text-blue-600">~60 segundos</span>
+                  <span className="font-bold text-blue-600">~40 segundos</span>
                 </div>
               </CardContent>
             </Card>
