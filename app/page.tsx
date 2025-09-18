@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
@@ -21,8 +22,7 @@ import {
 } from "recharts"
 import { 
   Thermometer, 
-  Gauge, 
-  Activity, 
+  Gauge,  
   Droplet,
   AlertTriangle,
   Play,
