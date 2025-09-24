@@ -157,12 +157,14 @@ export default function ImprovedPanelaDashboard() {
   // Loop de simulação - ajustado para processo mais rápido
   useEffect(() => {
     const interval = setInterval(() => {
-      const { temperature, setpoint, rpm, torque, phase, brix, auto, running } = ref.current
+      const { temperature, setpoint, rpm, torque, phase, brix, auto, running, protectionActive, originalRpm } = ref.current
       
       if (!running) return
 
       // Física da temperatura (mais rápida)
-      const toward = temperature + HEAT_K * (setpoint - temperature)
+      // Reduz aquecimento quando proteção ativa devido ao RPM reduzido
+      const heatFactor = protectionActive ? HEAT_K * 0.8 : HEAT_K
+      const toward = temperature + heatFactor * (setpoint - temperature)
       const cooled = toward - COOL_K * (temperature - AMBIENT)
       const nextTemp = Math.min(setpoint + 10, Math.max(AMBIENT, cooled))
 
@@ -177,6 +179,45 @@ export default function ImprovedPanelaDashboard() {
       let nextTorque = 5 + 50 * visc + 20 * rpmFactor + 40 * visc * rpmFactor
       if (phase === "Ponto") nextTorque += 5 * visc
       nextTorque = Math.min(100, Math.max(0, nextTorque))
+
+      // PROTEÇÃO DO MOTOR - Redução automática de RPM
+      let nextRpm = rpm
+      let nextProtectionActive = protectionActive
+      let nextOriginalRpm = originalRpm
+      
+      if (nextTorque >= 90 && !protectionActive) {
+        // Ativa proteção e salva RPM original
+        nextProtectionActive = true
+        nextOriginalRpm = rpm
+        nextRpm = Math.max(10, rpm * 0.7) // Reduz para 70% do RPM atual
+        setRpm(nextRpm)
+        setProtectionActive(true)
+        setOriginalRpm(rpm)
+        addAlarm("🛡️ PROTEÇÃO ATIVADA: Reduzindo RPM para evitar sobrecarga do motor!", "warning")
+      } else if (protectionActive) {
+        if (nextTorque >= 85) {
+          // Continua reduzindo se ainda estiver alto
+          nextRpm = Math.max(10, rpm - 2) // Reduz gradualmente
+          setRpm(nextRpm)
+        } else if (nextTorque < 75) {
+          // Torque voltou ao normal, desativa proteção gradualmente
+          if (rpm < originalRpm) {
+            nextRpm = Math.min(originalRpm, rpm + 5) // Aumenta gradualmente
+            setRpm(nextRpm)
+            if (nextRpm >= originalRpm) {
+              // Proteção completamente desativada
+              nextProtectionActive = false
+              setProtectionActive(false)
+              addAlarm("✅ Proteção desativada: Torque normalizado", "info")
+            }
+          }
+        }
+        // Recalcula o torque com o novo RPM
+        const newRpmFactor = nextRpm / 100
+        nextTorque = 5 + 50 * visc + 20 * newRpmFactor + 40 * visc * newRpmFactor
+        if (phase === "Ponto") nextTorque += 5 * visc
+        nextTorque = Math.min(100, Math.max(0, nextTorque))
+      }
 
       // Eficiência baseada nas condições
       const tempEfficiency = 100 - Math.abs(nextTemp - setpoint) * 0.5
@@ -208,8 +249,8 @@ export default function ImprovedPanelaDashboard() {
       if (nextTemp > setpoint + 5 && temperature <= setpoint + 5) {
         addAlarm(`Temperatura excedendo limite: ${nextTemp.toFixed(1)}°C`, "warning")
       }
-      if (nextTorque >= 85 && torque < 85) {
-        addAlarm("⚠️ Sobrecarga detectada no motor!", "error")
+      if (nextTorque >= 85 && torque < 85 && !protectionActive) {
+        addAlarm("⚠️ Torque elevado detectado no motor!", "warning")
       }
       if (nextTorque >= 95) {
         addAlarm("🚨 MOTOR EM SOBRECARGA CRÍTICA!", "error")
@@ -312,6 +353,7 @@ export default function ImprovedPanelaDashboard() {
 
   const getStatusColor = () => {
     if (torque >= 90) return "text-red-500"
+    if (protectionActive) return "text-orange-500"
     if (temperature > setpoint + 5) return "text-orange-500"
     if (!running) return "text-gray-500"
     return "text-green-500"
@@ -378,7 +420,7 @@ export default function ImprovedPanelaDashboard() {
 
                 <Alert className="border-blue-200 bg-blue-50">
                   <AlertDescription className="text-blue-700 text-sm">
-                    Após verificar todos os itens, feche as proteções e clique novamente em "Iniciar Processo".
+                    Após verificar todos os itens, feche as proteções e clique novamente em &quot;Iniciar Processo&quot;.
                   </AlertDescription>
                 </Alert>
               </DialogDescription>
@@ -394,6 +436,16 @@ export default function ImprovedPanelaDashboard() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Alerta de Proteção Ativa */}
+        {protectionActive && (
+          <Alert className="border-orange-500 bg-orange-50">
+            <ShieldAlert className="h-4 w-4 text-orange-600" />
+            <AlertDescription className="text-orange-700 font-medium">
+              🛡️ PROTEÇÃO DO MOTOR ATIVA: RPM reduzido automaticamente de {originalRpm} para {rpm} rpm para evitar sobrecarga (Torque: {torque.toFixed(0)}%)
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Indicadores principais */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -433,7 +485,10 @@ export default function ImprovedPanelaDashboard() {
             <CardContent className="pt-4 sm:pt-6">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <p className="text-xs sm:text-sm text-gray-500">Torque Motor</p>
+                  <p className="text-xs sm:text-sm text-gray-500">
+                    Torque Motor
+                    {protectionActive && <span className="text-orange-500 text-xs ml-1">(Proteção Ativa)</span>}
+                  </p>
                   <div className="flex items-baseline gap-1 sm:gap-2">
                     <span className="text-xl sm:text-2xl lg:text-3xl font-bold">{torque.toFixed(0)}</span>
                     <span className="text-sm sm:text-base text-gray-500">%</span>
@@ -442,8 +497,13 @@ export default function ImprovedPanelaDashboard() {
                     value={torque} 
                     className="mt-2"
                   />
+                  {torque >= 75 && (
+                    <p className="text-xs mt-1 text-orange-600">
+                      {torque >= 90 ? '🛡️ Proteção ativada' : torque >= 85 ? '⚠️ Próximo ao limite' : 'Monitorando...'}
+                    </p>
+                  )}
                 </div>
-                <Gauge className={`w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 ${torque >= 85 ? 'text-red-500' : torque >= 70 ? 'text-orange-500' : 'text-green-500'} ml-2`} />
+                <Gauge className={`w-6 h-6 sm:w-7 sm:h-7 lg:w-8 lg:h-8 ${torque >= 90 ? 'text-red-500' : torque >= 75 ? 'text-orange-500' : 'text-green-500'} ml-2`} />
               </div>
             </CardContent>
           </Card>
@@ -618,11 +678,11 @@ export default function ImprovedPanelaDashboard() {
                     <div className="flex justify-between">
                       <label className="text-xs sm:text-sm font-medium">
                         Velocidade da Pá (RPM)
-                        {protectionActive && <span className="text-orange-500 ml-1">🛡️</span>}
+                        {protectionActive && <span className="text-orange-500 ml-1">🛡️ PROTEÇÃO</span>}
                       </label>
                       <span className="text-xs sm:text-sm font-bold">
                         {rpm} rpm
-                        {protectionActive && <span className="text-orange-500 text-xs ml-1">(Reduzido)</span>}
+                        {protectionActive && <span className="text-orange-500 text-xs ml-1">(Auto-reduzido de {originalRpm})</span>}
                       </span>
                     </div>
                     <Slider 
@@ -640,9 +700,12 @@ export default function ImprovedPanelaDashboard() {
                       className={protectionActive ? "opacity-60" : ""}
                     />
                     {protectionActive && (
-                      <p className="text-xs text-orange-600">
-                        RPM reduzido automaticamente pela proteção contra sobrecarga
-                      </p>
+                      <Alert className="border-orange-200 bg-orange-50 mt-2">
+                        <AlertDescription className="text-xs text-orange-700">
+                          <strong>Proteção Automática:</strong> RPM reduzido para proteger o motor contra sobrecarga. 
+                          O sistema voltará ao RPM original ({originalRpm} rpm) quando o torque normalizar abaixo de 75%.
+                        </AlertDescription>
+                      </Alert>
                     )}
                   </div>
 
@@ -836,18 +899,24 @@ export default function ImprovedPanelaDashboard() {
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Status do Motor</span>
-                  <span className={`font-bold ${torque >= 85 ? 'text-red-500' : 'text-green-500'}`}>
-                    {torque >= 85 ? 'SOBRECARGA' : 'NORMAL'}
+                  <span className={`font-bold ${torque >= 90 ? 'text-red-500' : torque >= 75 ? 'text-orange-500' : 'text-green-500'}`}>
+                    {torque >= 90 ? '⚠️ PROTEÇÃO' : torque >= 85 ? 'ALTO TORQUE' : torque >= 75 ? 'ELEVADO' : 'NORMAL'}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-gray-500">Sistema de Proteção</span>
+                  <span className="text-gray-500">Proteção do Motor</span>
                   <div className="flex items-center gap-1">
                     <span className={`font-bold ${protectionActive ? 'text-orange-500' : 'text-green-500'}`}>
-                      {protectionActive ? 'ATIVO' : 'NORMAL'}
+                      {protectionActive ? 'ATIVA' : 'NORMAL'}
                     </span>
                     {protectionActive && <span className="text-xs">🛡️</span>}
                   </div>
+                </div>
+                <div className="flex justify-between text-xs sm:text-sm">
+                  <span className="text-gray-500">Velocidade da Pá</span>
+                  <span className={`font-bold ${protectionActive ? 'text-orange-500' : 'text-blue-600'}`}>
+                    {rpm} rpm {protectionActive && <span className="text-xs">(Reduzido)</span>}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Tempo Total</span>
@@ -855,11 +924,15 @@ export default function ImprovedPanelaDashboard() {
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Eficiência Geral</span>
-                  <span className="font-bold">{efficiency.toFixed(0)}%</span>
+                  <span className={`font-bold ${efficiency >= 80 ? 'text-green-600' : efficiency >= 60 ? 'text-orange-600' : 'text-red-600'}`}>
+                    {efficiency.toFixed(0)}%
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Processo Estimado</span>
-                  <span className="font-bold text-blue-600">04 minutos</span>
+                  <span className="font-bold text-blue-600">
+                    {protectionActive ? '~50 segundos' : '~40 segundos'}
+                  </span>
                 </div>
               </CardContent>
             </Card>
