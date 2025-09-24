@@ -9,6 +9,15 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
   LineChart,
   Line,
   XAxis,
@@ -34,7 +43,8 @@ import {
   Zap,
   CheckCircle2,
   XCircle,
-  BarChart3
+  BarChart3,
+  ShieldAlert
 } from "lucide-react"
 
 // ---------------- Configurações & Constantes ----------------
@@ -123,6 +133,10 @@ export default function ImprovedPanelaDashboard() {
   const [showChart, setShowChart] = useState(true)
   const [protectionActive, setProtectionActive] = useState(false)
   const [originalRpm, setOriginalRpm] = useState(40)
+  
+  // Estados da modal de proteção
+  const [showProtectionModal, setShowProtectionModal] = useState(false)
+  const [protectionClosed, setProtectionClosed] = useState(false)
 
   // Refs para laço estável
   const ref = useRef({ temperature, setpoint, rpm, torque, phase, brix, auto, running, protectionActive, originalRpm })
@@ -237,6 +251,21 @@ export default function ImprovedPanelaDashboard() {
   }, [running])
 
   // Ações
+  const handleStartClick = () => {
+    // Se a proteção ainda não foi confirmada, mostra a modal
+    if (!protectionClosed) {
+      setShowProtectionModal(true)
+      return
+    }
+    
+    // Se já foi confirmada, inicia/pausa normalmente
+    if (running) {
+      handlePause()
+    } else {
+      handleStart()
+    }
+  }
+
   const handleStart = () => {
     setRunning(true)
     setAuto(true)
@@ -265,6 +294,13 @@ export default function ImprovedPanelaDashboard() {
     setEfficiency(100)
     setProtectionActive(false)
     setOriginalRpm(40)
+    // Mantém o estado de proteção confirmada durante a sessão
+  }
+
+  const handleProtectionConfirm = () => {
+    setProtectionClosed(true)
+    setShowProtectionModal(false)
+    addAlarm("⚠️ Verifique se as proteções estão fechadas antes de iniciar", "warning")
   }
 
   const formatTime = (seconds: number) => {
@@ -312,6 +348,52 @@ export default function ImprovedPanelaDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Modal de Proteção */}
+        <Dialog open={showProtectionModal} onOpenChange={setShowProtectionModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-orange-600">
+                <ShieldAlert className="w-5 h-5" />
+                Aviso de Segurança
+              </DialogTitle>
+              <DialogDescription className="pt-3 space-y-3">
+                <Alert className="border-orange-500 bg-orange-50">
+                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-700 font-medium">
+                    ATENÇÃO: A proteção da panela está ABERTA!
+                  </AlertDescription>
+                </Alert>
+                
+                <div className="space-y-2 text-sm">
+                  <p className="font-semibold">Antes de iniciar o processo, verifique:</p>
+                  <ul className="list-disc list-inside space-y-1 text-gray-600">
+                    <li>Tampa da panela está fechada e travada</li>
+                    <li>Grades de proteção estão posicionadas</li>
+                    <li>Válvulas de segurança estão operacionais</li>
+                    <li>Área livre de pessoas</li>
+                    <li>Sistema de exaustão está ligado</li>
+                  </ul>
+                </div>
+
+                <Alert className="border-blue-200 bg-blue-50">
+                  <AlertDescription className="text-blue-700 text-sm">
+                    Após verificar todos os itens, feche as proteções e clique novamente em "Iniciar Processo".
+                  </AlertDescription>
+                </Alert>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                onClick={handleProtectionConfirm}
+                className="w-full"
+                variant="default"
+              >
+                Entendido
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Indicadores principais */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -666,7 +748,7 @@ export default function ImprovedPanelaDashboard() {
                 <Button 
                   className="w-full text-sm sm:text-base" 
                   size="lg"
-                  onClick={running ? handlePause : handleStart}
+                  onClick={handleStartClick}
                   variant={running ? "destructive" : "default"}
                 >
                   {running ? (
@@ -777,7 +859,7 @@ export default function ImprovedPanelaDashboard() {
                 </div>
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Processo Estimado</span>
-                  <span className="font-bold text-blue-600">~40 segundos</span>
+                  <span className="font-bold text-blue-600">04 minutos</span>
                 </div>
               </CardContent>
             </Card>
