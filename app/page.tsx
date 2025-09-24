@@ -931,7 +931,7 @@ export default function ImprovedPanelaDashboard() {
                 <div className="flex justify-between text-xs sm:text-sm">
                   <span className="text-gray-500">Processo Estimado</span>
                   <span className="font-bold text-blue-600">
-                    {protectionActive ? '~50 segundos' : '~40 segundos'}
+                    {protectionActive ? '~05 minutos' : '~04 minutos'}
                   </span>
                 </div>
               </CardContent>
